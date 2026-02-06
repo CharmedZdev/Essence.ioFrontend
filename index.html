@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Essence.io - Multiplayer IO Game</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  
+  <!-- UI Overlays -->
+  <div id="ui">
+    <div id="stats">
+      <div id="playerName">Player</div>
+      <div id="essenceCount">Essences: 0</div>
+      <div id="health">Health: 100/100</div>
+      <div id="fps">FPS: 60</div>
+      <div id="ping">Ping: 0ms</div>
+    </div>
+    <div id="connectionStatus">Connecting...</div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/utils/Vector2.js"></script>
+  <script src="js/utils/Interpolator.js"></script>
+  <script src="js/network/NetworkClient.js"></script>
+  <script src="js/entities/Entity.js"></script>
+  <script src="js/entities/Player.js"></script>
+  <script src="js/entities/RemotePlayer.js"></script>
+  <script src="js/entities/Essence.js"></script>
+  <script src="js/entities/NPC.js"></script>
+  <script src="js/systems/InputSystem.js"></script>
+  <script src="js/systems/RenderSystem.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
