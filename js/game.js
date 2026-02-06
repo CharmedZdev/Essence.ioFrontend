@@ -12,6 +12,8 @@ class Game {
     this.fps = 0;
     this.frameCount = 0;
     this.lastFpsUpdate = Date.now();
+    this.gameStarted = false;
+    this.playerName = '';
   }
 
   async initialize() {
@@ -26,42 +28,13 @@ class Game {
       await this.network.connect();
       console.log('✅ Connected to server');
       this.setupNetworkHandlers();
+      this.showTitleScreen();
     } catch (error) {
       console.error('❌ Failed to connect to server:', error);
-      this.showError('Failed to connect to server: ' + ClientConfig.SERVER_URL);
+      this.showTitleScreenError('Failed to connect to server');
       return false;
     }
 
-    this.inputSystem = new InputSystem();
-    this.inputSystem.onInput = (keys) => {
-      if (this.localPlayer) {
-        this.localPlayer.setInputState(keys);
-        this.network.send({
-          type: 'input',
-          input: {
-            keys: keys,
-            timestamp: Date.now()
-          }
-        });
-      }
-    };
-
-    this.renderSystem = new RenderSystem(this.ctx, this.canvas);
-
-    const playerName = prompt('Enter your player name:', 'Player_' + Math.floor(Math.random() * 10000));
-    
-    if (playerName) {
-      this.network.send({
-        type: 'join',
-        data: {
-          playerName: playerName || 'Unknown'
-        }
-      }, 'critical');
-    }
-
-    this.running = true;
-    this.gameLoop();
-    
     return true;
   }
 
@@ -69,13 +42,16 @@ class Game {
     this.network.on('init', (data) => {
       console.log('📦 Received init:', data);
       this.clientId = data.clientId;
-      document.getElementById('connectionStatus').textContent = 'Connected ✓';
-      document.getElementById('connectionStatus').classList.add('connected');
     });
 
     this.network.on('worldSnapshot', (snapshot) => {
       console.log('🌍 Received world snapshot:', snapshot);
       
+      if (!snapshot.players) {
+        console.error('Invalid world snapshot - no players data');
+        return;
+      }
+
       snapshot.players.forEach(playerData => {
         if (playerData.id === snapshot.clientId) {
           this.localPlayer = new Player(
@@ -102,29 +78,39 @@ class Game {
         }
       });
 
-      snapshot.essences.forEach(essenceData => {
-        const essence = new Essence(
-          essenceData.id,
-          essenceData.position.x,
-          essenceData.position.y,
-          essenceData.type,
-          essenceData.rarity,
-          essenceData.level
-        );
-        this.essences.set(essenceData.id, essence);
-      });
+      if (snapshot.essences) {
+        snapshot.essences.forEach(essenceData => {
+          const essence = new Essence(
+            essenceData.id,
+            essenceData.position.x,
+            essenceData.position.y,
+            essenceData.type,
+            essenceData.rarity,
+            essenceData.level
+          );
+          this.essences.set(essenceData.id, essence);
+        });
+      }
 
-      snapshot.npcs.forEach(npcData => {
-        const npc = new NPC(
-          npcData.id,
-          npcData.position.x,
-          npcData.position.y
-        );
-        this.npcs.set(npcData.id, npc);
-      });
+      if (snapshot.npcs) {
+        snapshot.npcs.forEach(npcData => {
+          const npc = new NPC(
+            npcData.id,
+            npcData.position.x,
+            npcData.position.y
+          );
+          this.npcs.set(npcData.id, npc);
+        });
+      }
+
+      this.gameStarted = true;
+      this.hideTitleScreen();
+      this.startGame();
     });
 
     this.network.on('stateUpdate', (update) => {
+      if (!update.updates) return;
+
       update.updates.forEach(entityUpdate => {
         if (entityUpdate.type === 'entityMoved') {
           const entity = this.getEntity(entityUpdate.entity.id);
@@ -169,6 +155,107 @@ class Game {
     this.network.on('pong', (data) => {
       this.network.handlePing(data);
     });
+  }
+
+  showTitleScreen() {
+    const titleScreen = document.createElement('div');
+    titleScreen.id = 'titleScreen';
+    titleScreen.innerHTML = `
+      <div class="title-container">
+        <h1 class="game-title">ESSENCE.IO</h1>
+        <p class="game-subtitle">Multiplayer IO Game</p>
+        
+        <div class="login-form">
+          <input 
+            type="text" 
+            id="usernameInput" 
+            class="username-input" 
+            placeholder="Enter your name..." 
+            maxlength="20"
+          />
+          <button id="playButton" class="play-button">PLAY</button>
+        </div>
+        
+        <p class="connection-status">✓ Connected to server</p>
+      </div>
+    `;
+    document.body.appendChild(titleScreen);
+
+    const usernameInput = document.getElementById('usernameInput');
+    const playButton = document.getElementById('playButton');
+
+    const startGame = () => {
+      const username = usernameInput.value.trim();
+      if (username.length > 0) {
+        this.playerName = username;
+        this.joinGame(username);
+        this.hideTitleScreen();
+      } else {
+        alert('Please enter a name');
+      }
+    };
+
+    playButton.addEventListener('click', startGame);
+    usernameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        startGame();
+      }
+    });
+
+    usernameInput.focus();
+  }
+
+  hideTitleScreen() {
+    const titleScreen = document.getElementById('titleScreen');
+    if (titleScreen) {
+      titleScreen.remove();
+    }
+  }
+
+  showTitleScreenError(message) {
+    const titleScreen = document.createElement('div');
+    titleScreen.id = 'titleScreen';
+    titleScreen.innerHTML = `
+      <div class="title-container">
+        <h1 class="game-title">ESSENCE.IO</h1>
+        <p class="error-message">${message}</p>
+        <button id="retryButton" class="play-button">Retry</button>
+      </div>
+    `;
+    document.body.appendChild(titleScreen);
+
+    document.getElementById('retryButton').addEventListener('click', () => {
+      location.reload();
+    });
+  }
+
+  joinGame(username) {
+    this.network.send({
+      type: 'join',
+      data: {
+        playerName: username
+      }
+    }, 'critical');
+  }
+
+  startGame() {
+    this.inputSystem = new InputSystem();
+    this.inputSystem.onInput = (keys) => {
+      if (this.localPlayer) {
+        this.localPlayer.setInputState(keys);
+        this.network.send({
+          type: 'input',
+          input: {
+            keys: keys,
+            timestamp: Date.now()
+          }
+        });
+      }
+    };
+
+    this.renderSystem = new RenderSystem(this.ctx, this.canvas);
+    this.running = true;
+    this.gameLoop();
   }
 
   getEntity(id) {
@@ -237,13 +324,6 @@ class Game {
   resizeCanvas() {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
-  }
-
-  showError(message) {
-    const status = document.getElementById('connectionStatus');
-    status.textContent = message;
-    status.style.borderColor = '#ff6b6b';
-    status.style.color = '#ff6b6b';
   }
 }
 
